@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>弹幕系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        h1 {
+            color: inherit;
+            text-align: center;
+        }
+        #danmu-container {
+            height: 400px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background-color: #222;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .danmu {
+            position: absolute;
+            white-space: nowrap;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+            animation: danmu-move linear;
+            animation-fill-mode: forwards;
+            will-change: transform;
+        }
+        @keyframes danmu-move {
+            from { transform: translateX(100vw); }
+            to { transform: translateX(-100%); }
+        }
+        #input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        #danmu-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        #send-btn, #dark-mode-btn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #send-btn:hover, #dark-mode-btn:hover {
+            background-color: #45a049;
+        }
+        #status {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        #user-count {
+            font-weight: bold;
+            color: #d9534f;
+        }
+        .color-btn {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #chat-history-container {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+            color: #333;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        /* 暗黑模式样式 */
+        body.dark-mode {
+            background-color: #333;
+            color: #f5f5f5;
+        }
+        body.dark-mode #danmu-container {
+            background-color: #555;
+        }
+        body.dark-mode #danmu-input {
+            background-color: #555;
+            color: #f5f5f5;
+            border: 1px solid #777;
+        }
+        body.dark-mode #send-btn, body.dark-mode #dark-mode-btn {
+            background-color: #555;
+        }
+        body.dark-mode #send-btn:hover, body.dark-mode #dark-mode-btn:hover {
+            background-color: #666;
+        }
+        body.dark-mode #chat-history-container {
+            background-color: #444;
+            color: #f5f5f5;
+        }
+
+        /* 根据系统主题自动设置暗黑模式 */
+        @media (prefers-color-scheme: dark) {
+            body {
+                background-color: #333;
+                color: #f5f5f5;
+            }
+            #chat-history-container {
+                background-color: #444;
+                color: #f5f5f5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>弹幕系统</h1>
+    
+    <div id="status">
+        连接状态: <span id="connection-status">未连接</span> | 
+        在线用户: <span id="user-count">0</span>
+    </div>
+    
+    <div id="danmu-container"></div>
+    
+    <div id="input-area">
+        <input type="text" id="danmu-input" placeholder="输入弹幕内容，按Enter发送">
+        <button id="send-btn">发送弹幕</button>
+    </div>
+    
+    <div id="username-area" style="margin-bottom: 20px;">
+        <input type="text" id="username-input" placeholder="输入你的用户名">
+        <button id="set-username-btn">设置用户名</button>
+    </div>
+
+    <div>
+        <h3>弹幕颜色:</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <button class="color-btn" style="background-color: #ff0000;" data-color="#ff0000">红色</button>
+            <button class="color-btn" style="background-color: #00ff00;" data-color="#00ff00">绿色</button>
+            <button class="color-btn" style="background-color: #0000ff;" data-color="#0000ff">蓝色</button>
+            <button class="color-btn" style="background-color: #ffff00;" data-color="#ffff00">黄色</button>
+            <button class="color-btn" style="background-color: #ff00ff;" data-color="#ff00ff">粉色</button>
+            <button class="color-btn" style="background-color: #ffffff;" data-color="#ffffff">白色</button>
+        </div>
+    </div>
+    
+    <div id="speed-control" style="margin-bottom: 20px;">
+        <label for="speed-range">弹幕速度:</label>
+        <input type="range" id="speed-range" min="5" max="20" value="10">
+    </div>
+
+    <div id="chat-history-container">
+        <!-- 聊天历史记录将动态插入到这里 -->
+    </div>
+
+    <!-- 暗黑模式切换按钮 -->
+    <button id="dark-mode-btn">切换暗黑模式</button>
+
+<script>
+    // 动态注入的服务器地址和房间号
+    const serverUrl = "{{ server_url }}"; // 从后端动态注入
+    const roomId = "{{ room_id }}"; // 从后端动态注入
+
+    console.log("服务器地址:", serverUrl);
+    console.log("房间号:", roomId);
+
+    // 状态变量
+    let selectedColor = '#ffffff';
+    let username = '匿名用户' + Math.floor(Math.random() * 1000);
+    let chatHistory = [];
+    const MAX_CHAT_HISTORY = 100;
+    
+    // 初始化Socket.IO连接
+    const socket = io(`http://${serverUrl}`, {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+    });
+    
+    // DOM元素
+    const container = document.getElementById('danmu-container');
+    const input = document.getElementById('danmu-input');
+    const sendBtn = document.getElementById('send-btn');
+    const connectionStatus = document.getElementById('connection-status');
+    const userCount = document.getElementById('user-count');
+    const colorBtns = document.querySelectorAll('.color-btn');
+    const usernameInput = document.getElementById('username-input');
+    const setUsernameBtn = document.getElementById('set-username-btn');
+    const speedRange = document.getElementById('speed-range');
+    const chatHistoryContainer = document.getElementById('chat-history-container');
+    const darkModeBtn = document.getElementById('dark-mode-btn');
+    
+    // 弹幕轨道系统
+    const DANMU_TRACKS = 8; // 轨道数量
+    const TRACK_HEIGHT = 40; // 每条轨道高度
+    let tracks = Array(DANMU_TRACKS).fill().map((_, i) => ({
+        position: i * TRACK_HEIGHT + 5,
+        occupied: false
+    }));
+    
+    // 初始化函数
+    function init() {
+        setupEventListeners();
+        joinRoom();
+    }
+    
+    // 设置事件监听
+    function setupEventListeners() {
+        // 发送弹幕
+        sendBtn.addEventListener('click', sendDanmu);
+        input.addEventListener('keypress', (e) => e.key === 'Enter' && sendDanmu());
+        
+        // 颜色选择
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedColor = btn.dataset.color;
+                colorBtns.forEach(b => b.style.border = '1px solid #ddd');
+                btn.style.border = '2px solid #000';
+            });
+        });
+        
+        // 设置用户名
+        setUsernameBtn.addEventListener('click', setUsername);
+        
+        // 速度控制
+        speedRange.addEventListener('input', updateSpeed);
+        
+        // 暗黑模式切换
+        darkModeBtn.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+        });
+
+        // 根据系统主题设置初始模式
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.body.classList.add('dark-mode');
+        }
+
+        // Socket.IO事件
+        socket.on('connect', onConnected);
+        socket.on('disconnect', onDisconnected);
+        socket.on('new_danmu', onNewDanmu);
+        socket.on('system_message', onSystemMessage);
+        socket.on('user_list_updated', onUserListUpdated);
+        
+        // 默认选择白色
+        document.querySelector('.color-btn[data-color="#ffffff"]').style.border = '2px solid #000';
+    }
+    
+    // 加入房间
+    function joinRoom() {
+        socket.emit('join_room', { 
+            room_id: roomId, 
+            username: username 
+        });
+    }
+    
+    // 连接事件处理
+    function onConnected() {
+        console.log('已连接到服务器');
+        connectionStatus.textContent = '已连接';
+        connectionStatus.style.color = 'green';
+    }
+    
+    function onDisconnected() {
+        console.log('与服务器断开连接');
+        connectionStatus.textContent = '已断开';
+        connectionStatus.style.color = 'red';
+    }
+    
+    // 收到新弹幕
+    function onNewDanmu(data) {
+        console.log('收到弹幕:', data);
+        createDanmu(data);
+        addToChatHistory(data);
+    }
+    
+    // 系统消息
+    function onSystemMessage(data) {
+        console.log('系统消息:', data);
+        createSystemMessage(data.content);
+        addToChatHistory({
+            username: '系统',
+            content: data.content,
+            color: '#00ffff'
+        });
+    }
+    
+    // 用户列表更新
+    function onUserListUpdated(users) {
+        userCount.textContent = users.length;
+    }
+    
+    // 创建弹幕元素
+    function createDanmu(data) {
+        const danmu = document.createElement('div');
+        danmu.className = 'danmu';
+        danmu.textContent = `[${data.username}] ${data.content}`;
+        danmu.style.color = data.color || selectedColor;
+        
+        // 获取可用轨道
+        const track = getAvailableTrack();
+        danmu.style.top = `${track.position}px`;
+        track.occupied = true;
+        
+        // 设置动画
+        const duration = 15000 / (speedRange.value || 10);
+        danmu.style.animationDuration = `${duration}ms`;
+        
+        container.appendChild(danmu);
+        
+        // 动画结束后清理
+        danmu.addEventListener('animationend', () => {
+            track.occupied = false;
+            danmu.remove();
+        });
+    }
+    
+    // 获取可用轨道（优先上方）
+    function getAvailableTrack() {
+        // 优先检查上方轨道
+        for (let i = 0; i < Math.min(4, DANMU_TRACKS); i++) {
+            if (!tracks[i].occupied) {
+                return tracks[i];
+            }
+        }
+        // 其次检查所有轨道
+        for (let i = 0; i < DANMU_TRACKS; i++) {
+            if (!tracks[i].occupied) {
+                return tracks[i];
+            }
+        }
+        // 全部占用则随机返回一个
+        return tracks[Math.floor(Math.random() * DANMU_TRACKS)];
+    }
+    
+    // 创建系统消息
+    function createSystemMessage(message) {
+        const msg = document.createElement('div');
+        msg.className = 'danmu';
+        msg.textContent = `[系统] ${message}`;
+        msg.style.color = '#00ffff';
+        msg.style.top = '10px';
+        msg.style.animationDuration = '5s';
+        
+        container.appendChild(msg);
+        
+        msg.addEventListener('animationend', () => msg.remove());
+    }
+    
+    // 发送弹幕
+    function sendDanmu() {
+        const content = input.value.trim();
+        if (content) {
+            socket.emit('send_danmu', {
+                room_id: roomId,
+                content: content,
+                color: selectedColor,
+                username: username
+            });
+            input.value = '';
+            input.focus();
+        }
+    }
+    
+    // 设置用户名
+    function setUsername() {
+        const newUsername = usernameInput.value.trim();
+        if (newUsername) {
+            username = newUsername;
+            socket.emit('register_user', { name: username });
+            alert(`用户名已设置为: ${username}`);
+        } else {
+            alert('用户名不能为空！');
+        }
+    }
+    
+    // 更新速度
+    function updateSpeed() {
+        // 速度改变时不需要特别处理，动画会使用最新值
+    }
+    
+    // 添加到聊天历史
+    function addToChatHistory(data) {
+        const entry = document.createElement('div');
+        entry.innerHTML = `<span style="color:${data.color || '#000'}">[${data.username}] ${data.content}</span>`;
+        chatHistoryContainer.appendChild(entry);
+        
+        // 限制历史记录数量
+        if (chatHistoryContainer.children.length > MAX_CHAT_HISTORY) {
+            chatHistoryContainer.removeChild(chatHistoryContainer.children[0]);
+        }
+        
+        // 自动滚动到底部
+        chatHistoryContainer.scrollTop = chatHistoryContainer.scrollHeight;
+    }
+    
+    // 页面加载完成后初始化
+    window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

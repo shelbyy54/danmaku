@@ -1,0 +1,12 @@
+version: "3.0"
+services:
+  danmaku:
+    image: docker.io/library/danmaku:latest
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./config.json:/app/config.json:ro  # 只读挂载更安全
+      - ./TeacherClient.exe:/app/TeacherClient.exe:ro
+      - ./templates:/app/templates:ro
+    ports:
+      - "7676:7676"
